@@ -82,7 +82,8 @@ entity neorv32_sysinfo is
     IO_XIRQ_NUM_CH       : natural; -- number of external interrupt (XIRQ) channels to implement
     IO_GPTMR_EN          : boolean; -- implement general purpose timer (GPTMR)?
     IO_XIP_EN            : boolean; -- implement execute in place module (XIP)?
-    IO_ONEWIRE_EN        : boolean  -- implement 1-wire interface (ONEWIRE)?
+    IO_ONEWIRE_EN        : boolean;  -- implement 1-wire interface (ONEWIRE)?
+    IO_AES_EN            : boolean   -- implement AES(128) custom function?
   );
   port (
     -- host access --

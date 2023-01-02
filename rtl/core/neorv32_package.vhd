@@ -160,7 +160,7 @@ package neorv32_package is
 
   -- Custom Functions Subsystem (CFS) --
   constant cfs_base_c           : std_ulogic_vector(31 downto 0) := x"fffffe00"; -- base address
-  constant cfs_size_c           : natural := 32*4; -- module's address space in bytes
+  constant cfs_size_c           : natural := 27*4; -- module's address space in bytes
   constant cfs_reg0_addr_c      : std_ulogic_vector(31 downto 0) := x"fffffe00";
   constant cfs_reg1_addr_c      : std_ulogic_vector(31 downto 0) := x"fffffe04";
   constant cfs_reg2_addr_c      : std_ulogic_vector(31 downto 0) := x"fffffe08";
@@ -188,11 +188,15 @@ package neorv32_package is
   constant cfs_reg24_addr_c     : std_ulogic_vector(31 downto 0) := x"fffffe60";
   constant cfs_reg25_addr_c     : std_ulogic_vector(31 downto 0) := x"fffffe64";
   constant cfs_reg26_addr_c     : std_ulogic_vector(31 downto 0) := x"fffffe68";
-  constant cfs_reg27_addr_c     : std_ulogic_vector(31 downto 0) := x"fffffe6c";
-  constant cfs_reg28_addr_c     : std_ulogic_vector(31 downto 0) := x"fffffe70";
-  constant cfs_reg29_addr_c     : std_ulogic_vector(31 downto 0) := x"fffffe74";
-  constant cfs_reg30_addr_c     : std_ulogic_vector(31 downto 0) := x"fffffe78";
-  constant cfs_reg31_addr_c     : std_ulogic_vector(31 downto 0) := x"fffffe7c";
+--
+  constant aes_base_c           : std_ulogic_vector(31 downto 0) := x"fffffe6c"; -- base address
+  constant aes_size_c           : natural := 5*4; -- module's address space in bytes
+  constant aes_ctrl_addr_c      : std_ulogic_vector(31 downto 0) := x"fffffe6c";
+  constant aes_key_addr_c       : std_ulogic_vector(31 downto 0) := x"fffffe70";
+  constant aes_iv_addr_c        : std_ulogic_vector(31 downto 0) := x"fffffe74";
+  constant aes_din_addr_c       : std_ulogic_vector(31 downto 0) := x"fffffe78";
+  constant aes_dout_addr_c      : std_ulogic_vector(31 downto 0) := x"fffffe7c";
+
 
   -- Pulse-Width Modulation Controller (PWM) --
   constant pwm_base_c           : std_ulogic_vector(31 downto 0) := x"fffffe80"; -- base address
@@ -1069,7 +1073,8 @@ package neorv32_package is
       IO_NEOLED_TX_FIFO            : natural := 1;      -- NEOLED TX FIFO depth, 1..32k, has to be a power of two
       IO_GPTMR_EN                  : boolean := false;  -- implement general purpose timer (GPTMR)?
       IO_XIP_EN                    : boolean := false;  -- implement execute in place module (XIP)?
-      IO_ONEWIRE_EN                : boolean := false   -- implement 1-wire interface (ONEWIRE)?
+      IO_ONEWIRE_EN                : boolean := false;  -- implement 1-wire interface (ONEWIRE)?
+      IO_AES_EN                    : boolean := false   -- implement AES(128) custom function?
     );
     port (
       -- Global control --
@@ -1986,6 +1991,29 @@ package neorv32_package is
     );
   end component;
 
+  -- Component: AES128 Custom Function (AES) --------------------------------------------
+  -- -------------------------------------------------------------------------------------------
+  component neorv32_cfs_aes is
+    generic (
+      AES_CONFIG : std_ulogic_vector(31 downto 0) -- custom CFS configuration generic
+    );
+    port (
+      -- host access --
+      clk_i       : in  std_ulogic; -- global clock line
+      rstn_i      : in  std_ulogic; -- global reset line, low-active, use as async
+      priv_i      : in  std_ulogic; -- current CPU privilege mode
+      addr_i      : in  std_ulogic_vector(31 downto 0); -- address
+      rden_i      : in  std_ulogic; -- read enable
+      wren_i      : in  std_ulogic; -- word write enable
+      data_i      : in  std_ulogic_vector(31 downto 0); -- data in
+      data_o      : out std_ulogic_vector(31 downto 0); -- data out
+      ack_o       : out std_ulogic; -- transfer acknowledge
+      err_o       : out std_ulogic; -- transfer error
+      -- interrupt --
+      irq_o       : out std_ulogic  -- interrupt request
+    );
+  end component;
+
   -- Component: Smart LED (WS2811/WS2812) Interface (NEOLED) --------------------------------
   -- -------------------------------------------------------------------------------------------
   component neorv32_neoled
@@ -2195,7 +2223,8 @@ package neorv32_package is
       IO_XIRQ_NUM_CH       : natural; -- number of external interrupt (XIRQ) channels to implement
       IO_GPTMR_EN          : boolean; -- implement general purpose timer (GPTMR)?
       IO_XIP_EN            : boolean; -- implement execute in place module (XIP)?
-      IO_ONEWIRE_EN        : boolean  -- implement 1-wire interface (ONEWIRE)?
+      IO_ONEWIRE_EN        : boolean; -- implement 1-wire interface (ONEWIRE)?
+      IO_AES_EN            : boolean  -- implement AES(128) custom function?
     );
     port (
       -- host access --

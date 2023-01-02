@@ -139,7 +139,8 @@ entity neorv32_top is
     IO_NEOLED_TX_FIFO            : natural := 1;      -- NEOLED TX FIFO depth, 1..32k, has to be a power of two
     IO_GPTMR_EN                  : boolean := false;  -- implement general purpose timer (GPTMR)?
     IO_XIP_EN                    : boolean := false;  -- implement execute in place module (XIP)?
-    IO_ONEWIRE_EN                : boolean := false   -- implement 1-wire interface (ONEWIRE)?
+    IO_ONEWIRE_EN                : boolean := false;  -- implement 1-wire interface (ONEWIRE)?
+    IO_AES_EN                    : boolean := false   -- implement AES(128) custom function?
   );
   port (
     -- Global control --
@@ -357,7 +358,7 @@ architecture neorv32_top_rtl of neorv32_top is
   type resp_bus_id_t is (RESP_BUSKEEPER, RESP_IMEM, RESP_DMEM, RESP_BOOTROM, RESP_WISHBONE, RESP_GPIO,
                          RESP_MTIME, RESP_UART0, RESP_UART1, RESP_SPI, RESP_TWI, RESP_PWM, RESP_WDT,
                          RESP_TRNG, RESP_CFS, RESP_NEOLED, RESP_SYSINFO, RESP_OCD, RESP_SLINK, RESP_XIRQ,
-                         RESP_GPTMR, RESP_XIP_CT, RESP_XIP_ACC, RESP_ONEWIRE);
+                         RESP_GPTMR, RESP_XIP_CT, RESP_XIP_ACC, RESP_ONEWIRE, RESP_AES);
 
   -- module response bus --
   type resp_bus_t is array (resp_bus_id_t) of resp_bus_entry_t;
@@ -374,6 +375,7 @@ architecture neorv32_top_rtl of neorv32_top is
   signal spi_irq       : std_ulogic;
   signal twi_irq       : std_ulogic;
   signal cfs_irq       : std_ulogic;
+  signal aes_irq       : std_ulogic;
   signal neoled_irq    : std_ulogic;
   signal slink_tx_irq  : std_ulogic;
   signal slink_rx_irq  : std_ulogic;
@@ -410,6 +412,7 @@ begin
   cond_sel_string_f(IO_WDT_EN, "WDT ", "") &
   cond_sel_string_f(IO_TRNG_EN, "TRNG ", "") &
   cond_sel_string_f(IO_CFS_EN, "CFS ", "") &
+  cond_sel_string_f(IO_AES_EN, "AES ", "") &
   cond_sel_string_f(io_slink_en_c, "SLINK ", "") &
   cond_sel_string_f(IO_NEOLED_EN, "NEOLED ", "") &
   cond_sel_string_f(boolean(XIRQ_NUM_CH > 0), "XIRQ ", "") &
@@ -641,7 +644,7 @@ begin
   fast_irq(12) <= gptmr_irq;     -- general purpose timer
   fast_irq(13) <= onewire_irq;   -- ONEWIRE operation done
   --
-  fast_irq(14) <= '0';           -- reserved
+  fast_irq(14) <= aes_irq;       -- reserved
   fast_irq(15) <= '0';           -- LOWEST PRIORITY - reserved
 
 
@@ -1057,6 +1060,36 @@ begin
     cfs_cg_en <= '0';
     cfs_irq   <= '0';
     cfs_out_o <= (others => '0');
+  end generate;
+
+
+  -- AES128 Custom Function (AES) -------------------------------------------------------
+  -- -------------------------------------------------------------------------------------------
+  neorv32_cfs_aes_inst_true:
+  if (IO_AES_EN = true) generate
+    neorv32_cfs_aes_inst: neorv32_cfs_aes
+    generic map (
+      AES_CONFIG => 32x"0"  -- custom AES configuration generic
+    )
+    port map (
+      -- host access --
+      clk_i       => clk_i,                    -- global clock line
+      rstn_i      => rstn_int,                 -- global reset line, low-active, use as async
+      priv_i      => p_bus.priv,               -- current CPU privilege mode
+      addr_i      => p_bus.addr,               -- address
+      rden_i      => io_rden,                  -- read enable
+      wren_i      => io_wren,                  -- word write enable
+      data_i      => p_bus.wdata,              -- data in
+      data_o      => resp_bus(RESP_AES).rdata, -- data out
+      ack_o       => resp_bus(RESP_AES).ack,   -- transfer acknowledge
+      err_o       => resp_bus(RESP_AES).err,   -- access error
+      -- interrupt --
+      irq_o       => aes_irq                   -- interrupt request
+    );
+  else generate
+    resp_bus(RESP_AES) <= resp_bus_entry_terminate_c;
+    --
+    aes_irq <= '0';
   end generate;
 
 
@@ -1672,7 +1705,8 @@ begin
     IO_XIRQ_NUM_CH       => XIRQ_NUM_CH,          -- number of external interrupt (XIRQ) channels to implement
     IO_GPTMR_EN          => IO_GPTMR_EN,          -- implement general purpose timer (GPTMR)?
     IO_XIP_EN            => IO_XIP_EN,            -- implement execute in place module (XIP)?
-    IO_ONEWIRE_EN        => IO_ONEWIRE_EN         -- implement 1-wire interface (ONEWIRE)?
+    IO_ONEWIRE_EN        => IO_ONEWIRE_EN,        -- implement 1-wire interface (ONEWIRE)?
+    IO_AES_EN            => IO_AES_EN             -- implement AES(128) custom function?
   )
   port map (
     -- host access --

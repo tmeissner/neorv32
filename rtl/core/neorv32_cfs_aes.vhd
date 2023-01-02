@@ -1,16 +1,9 @@
 -- #################################################################################################
--- # << NEORV32 - Custom Functions Subsystem (CFS) >>                                              #
--- # ********************************************************************************************* #
--- # Intended for tightly-coupled, application-specific custom co-processors. This module provides #
--- # 32x 32-bit memory-mapped interface registers, one interrupt request signal and custom IO      #
--- # conduits for processor-external or chip-external interface.                                   #
--- #                                                                                               #
--- # NOTE: This is just an example/illustration template. Modify/replace this file to implement    #
--- #       your own custom design logic.                                                           #
+-- # << NEORV32 - AES Custom Function >>                                                           #
 -- # ********************************************************************************************* #
 -- # BSD 3-Clause License                                                                          #
 -- #                                                                                               #
--- # Copyright (c) 2022, Stephan Nolting. All rights reserved.                                     #
+-- # Copyright (c) 2023, Torsten Meissner. All rights reserved.                                    #
 -- #                                                                                               #
 -- # Redistribution and use in source and binary forms, with or without modification, are          #
 -- # permitted provided that the following conditions are met:                                     #
@@ -45,6 +38,9 @@ use ieee.numeric_std.all;
 
 library neorv32;
 use neorv32.neorv32_package.all;
+
+library cryptocores;
+
 
 entity neorv32_cfs_aes is
   generic (
@@ -82,22 +78,24 @@ architecture neorv32_cfs_rtl of neorv32_cfs_aes is
   signal rden   : std_ulogic; -- read enable
 
   -- AES registers --
-  signal aes_ctrl : std_logic_vector(31 downto 0);-- AES control register
-  signal aes_key  : std_logic_vector(0 to 127);-- AES key register
-  signal aes_iv   : std_logic_vector(0 to 127);-- AES IV register
-  signal aes_dout : std_logic_vector(0 to 127);-- AES data out register
-  signal aes_din  : std_logic_vector(0 to 127);-- AES data in register
+  signal aes_ctrl  : std_logic_vector(31 downto 0);  -- AES control register
+  signal aes_key   : std_logic_vector(0 to 127);     -- AES key register
+  signal aes_nonce : std_logic_vector(0 to 95);      -- AES nonce register
+  signal aes_dout  : std_logic_vector(0 to 127);     -- AES data out register
+  signal aes_din   : std_logic_vector(0 to 127);     -- AES data in register
+
+  signal aes_din_accept  : std_logic;
+  signal aes_dout_valid  : std_logic;
+  signal aes_dout_accept : std_logic;
 
   type reg_acc_cnt_t is array (natural range <>) of unsigned(1 downto 0);
   signal read_acc_cnt  : reg_acc_cnt_t(0 to 3);
   signal write_acc_cnt : reg_acc_cnt_t(0 to 2);
 
-  constant REG_RST   : natural := 0;
-  constant DEC_START : natural := 1;
-  constant ENC_START : natural := 2;
-  constant FINISHED  : natural := 3;
-
-
+  constant AES_RESET : natural := 0;  -- Reset key & din registers
+  constant CTR_START : natural := 1;  -- 1st round of counter mode
+  constant AES_START : natural := 2;  -- start AES engine (cleared with AES_END)
+  constant AES_END   : natural := 8;  -- AES engine finished
 
 
 begin
@@ -109,25 +107,6 @@ begin
   addr   <= aes_base_c(31 downto lo_abb_c) & addr_i(lo_abb_c-1 downto 2) & "00"; -- word aligned
   wren   <= acc_en and wren_i; -- only full-word write accesses are supported
   rden   <= acc_en and rden_i; -- read accesses always return a full 32-bit word
-
-
-  -- CFS Generics ---------------------------------------------------------------------------
-  -- -------------------------------------------------------------------------------------------
-  -- In it's default version the CFS provides three configuration generics:
-  -- > CFS_CONFIG   - is a blank 32-bit generic. It is intended as a "generic conduit" to propagate
-  --                  custom configuration flags from the top entity down to this module.
-
-
-  -- Reset System ---------------------------------------------------------------------------
-  -- -------------------------------------------------------------------------------------------
-  -- The CFS can be reset using the global rstn_i signal. This signal should be used as asynchronous reset and is active-low.
-  -- Note that rstn_i can be asserted by a processor-external reset, the on-chip debugger and also by the watchdog.
-  --
-  -- Most default peripheral devices of the NEORV32 do NOT use a dedicated hardware reset at all. Instead, these units are
-  -- reset by writing ZERO to a specific "control register" located right at the beginning of the device's address space
-  -- (so this register is cleared at first). The crt0 start-up code writes ZERO to every single address in the processor's
-  -- IO space - including the CFS. Make sure that this initial clearing does not cause any unintended CFS actions.
-
 
   -- Interrupt ------------------------------------------------------------------------------
   -- -------------------------------------------------------------------------------------------
@@ -161,21 +140,14 @@ begin
   err_o <= '0'; -- Tie to zero if not explicitly used.
 
 
-  -- Host access example: Read and write access to the interface registers + bus transfer acknowledge. This example only
-  -- implements four physical r/w register (the four lowest CFS registers). The remaining addresses of the CFS are not associated
-  -- with any physical registers - any access to those is simply ignored but still acknowledged. Only full-word write accesses are
-  -- supported (and acknowledged) by this example. Sub-word write access will not alter any CFS register state and will cause
-  -- a "bus store access" exception (with a "Device Timeout" qualifier as not ACK is generated in that case).
-
-  host_access: process (rstn_i, clk_i)
+  host_access: process (rstn_i, clk_i) is
   begin
     if (not rstn_i) then
       aes_ctrl      <= (others => '0');
-      aes_key       <= (others => '0');
-      aes_iv        <= (others => '0');
-      aes_din       <= (others => '0');
       read_acc_cnt  <= (others => "00");
       write_acc_cnt <= (others => "00");
+      -- aes
+      aes_dout_accept <= '0';
       --
       ack_o  <= '0';
       data_o <= (others => '0');
@@ -189,51 +161,84 @@ begin
       if (wren) then -- full-word write access, high for one cycle if there is an actual write access
         case addr is
           when aes_ctrl_addr_c => aes_ctrl <= data_i;
-                                  if (data_i(REG_RST)) then
+                                  if (data_i(AES_RESET)) then
                                     aes_key       <= (others => '0');
-                                    aes_iv        <= (others => '0');
+                                    aes_nonce     <= (others => '0');
                                     aes_din       <= (others => '0');
-                                    read_acc_cnt  <= (others => "00");
                                     write_acc_cnt <= (others => "00");
+                                    read_acc_cnt  <= (others => "00");
                                   end if;
           when aes_key_addr_c  => write_acc_cnt(0) <= write_acc_cnt(0) + 1;
                                   aes_key(to_integer(write_acc_cnt(0))*32 to to_integer(write_acc_cnt(0))*32+31) <= data_i;
-          when aes_iv_addr_c   => write_acc_cnt(1) <= write_acc_cnt(1) + 1;
-                                  aes_iv(to_integer(write_acc_cnt(1))*32 to to_integer(write_acc_cnt(1))*32+31) <= data_i;
-          when aes_din_addr_c  => write_acc_cnt(2) <= write_acc_cnt(2) + 1;
+          when aes_nonce_addr_c => if (write_acc_cnt(1) = "10") then
+                                     write_acc_cnt(1) <= "00";
+                                   else
+                                     write_acc_cnt(1) <= write_acc_cnt(1) + 1;
+                                   end if;
+                                   aes_nonce(to_integer(write_acc_cnt(1))*32 to to_integer(write_acc_cnt(1))*32+31) <= data_i;
+          when aes_din_addr_c  => write_acc_cnt(1) <= write_acc_cnt(2) + 1;
                                   aes_din(to_integer(write_acc_cnt(2))*32 to to_integer(write_acc_cnt(2))*32+31) <= data_i;
           when others          => null;
         end case;
       end if;
 
       -- read access --
-      data_o <= (others => '0'); -- the output HAS TO BE ZERO if there is no actual read access
+      data_o          <= (others => '0'); -- the output HAS TO BE ZERO if there is no actual read access
+      aes_dout_accept <= '0';
       if (rden) then -- the read access is always 32-bit wide, high for one cycle if there is an actual read access
         case addr is -- make sure to use the internal 'addr' signal for the read/write interface
           when aes_ctrl_addr_c => data_o <= aes_ctrl;
           when aes_key_addr_c  => read_acc_cnt(0) <= read_acc_cnt(0) + 1;
                                   data_o <= aes_key(to_integer(read_acc_cnt(0))*32 to to_integer(read_acc_cnt(0))*32+31);
-          when aes_iv_addr_c   => read_acc_cnt(1) <= read_acc_cnt(1) + 1;
-                                  data_o <= aes_iv(to_integer(read_acc_cnt(1))*32 to to_integer(read_acc_cnt(1))*32+31);
+          when aes_nonce_addr_c => if (read_acc_cnt(1) = "10") then
+                                     read_acc_cnt(1) <= "00";
+                                   else
+                                     read_acc_cnt(1) <= read_acc_cnt(1) + 1;
+                                   end if;
+                                   data_o <= aes_nonce(to_integer(read_acc_cnt(1))*32 to to_integer(read_acc_cnt(1))*32+31);
           when aes_din_addr_c  => read_acc_cnt(2) <= read_acc_cnt(2) + 1;
                                   data_o <= aes_din(to_integer(read_acc_cnt(2))*32 to to_integer(read_acc_cnt(2))*32+31);
           when aes_dout_addr_c => read_acc_cnt(3) <= read_acc_cnt(3) + 1;
                                   data_o <= aes_dout(to_integer(read_acc_cnt(3))*32 to to_integer(read_acc_cnt(3))*32+31);
-          when others          => data_o <= (others => '0'); -- the remaining registers are not implemented and will read as zero
+                                  if (read_acc_cnt(3) = "11") then
+                                    aes_dout_accept <= aes_dout_valid;
+                                  end if;
+          when others          => data_o <= (others => '0');
         end case;
       end if;
+
+      -- Set AES_END when AES out data is valid
+      -- Reset when AES out data was accepted (all 4 dwords of aes_dout were read)
+      if (aes_dout_accept) then
+        aes_ctrl(AES_END) <= '0';
+      elsif (aes_dout_valid) then
+        aes_ctrl(AES_END) <= '1';
+      end if;
+
+      -- Reset AES_START & CTR_START when AES engine accepts in data
+      if (aes_din_accept) then
+        aes_ctrl(AES_START) <= '0';
+        aes_ctrl(CTR_START) <= '0';
+      end if;
+
     end if;
   end process host_access;
 
 
-  -- CFS Function Core ----------------------------------------------------------------------
-  -- -------------------------------------------------------------------------------------------
-
-  -- This is where the actual functionality can be implemented.
-  -- The logic below is just a very simple example that transforms data
-  -- from an input register into data in an output register.
-
-  aes_dout <= aes_din; -- dummy so far
+  aes_inst : entity cryptocores.ctraes
+  port map (
+    reset_i  => rstn_i,
+    clk_i    => clk_i,
+    start_i  => aes_ctrl(CTR_START),
+    nonce_i  => aes_nonce,
+    key_i    => aes_key,
+    data_i   => aes_din,
+    valid_i  => aes_ctrl(AES_START),
+    accept_o => aes_din_accept,
+    data_o   => aes_dout,
+    valid_o  => aes_dout_valid,
+    accept_i => aes_dout_accept
+  );
 
 
 end neorv32_cfs_rtl;

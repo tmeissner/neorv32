@@ -193,7 +193,7 @@ package neorv32_package is
   constant aes_size_c           : natural := 5*4; -- module's address space in bytes
   constant aes_ctrl_addr_c      : std_ulogic_vector(31 downto 0) := x"fffffe6c";
   constant aes_key_addr_c       : std_ulogic_vector(31 downto 0) := x"fffffe70";
-  constant aes_iv_addr_c        : std_ulogic_vector(31 downto 0) := x"fffffe74";
+  constant aes_nonce_addr_c     : std_ulogic_vector(31 downto 0) := x"fffffe74";
   constant aes_din_addr_c       : std_ulogic_vector(31 downto 0) := x"fffffe78";
   constant aes_dout_addr_c      : std_ulogic_vector(31 downto 0) := x"fffffe7c";
 

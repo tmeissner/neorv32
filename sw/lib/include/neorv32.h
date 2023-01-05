@@ -594,6 +594,13 @@ enum NEORV32_CLOCK_PRSC_enum {
 #define CFS_RTE_ID             RTE_TRAP_FIRQ_1   /**< RTE entry code (#NEORV32_RTE_TRAP_enum) */
 #define CFS_TRAP_CODE          TRAP_CODE_FIRQ_1  /**< MCAUSE CSR trap code (#NEORV32_EXCEPTION_CODES_enum) */
 /**@}*/
+/** @name AES Custom Functions (CFS) */
+/**@{*/
+#define AES_FIRQ_ENABLE        CSR_MIE_FIRQ1E    /**< MIE CSR bit (#NEORV32_CSR_MIE_enum) */
+#define AES_FIRQ_PENDING       CSR_MIP_FIRQ1P    /**< MIP CSR bit (#NEORV32_CSR_MIP_enum) */
+#define AES_RTE_ID             RTE_TRAP_FIRQ_1   /**< RTE entry code (#NEORV32_RTE_TRAP_enum) */
+#define AES_TRAP_CODE          TRAP_CODE_FIRQ_1  /**< MCAUSE CSR trap code (#NEORV32_EXCEPTION_CODES_enum) */
+/**@}*/
 /** @name Primary Universal Asynchronous Receiver/Transmitter (UART0) */
 /**@{*/
 #define UART0_RX_FIRQ_ENABLE   CSR_MIE_FIRQ2E    /**< MIE CSR bit (#NEORV32_CSR_MIE_enum) */
@@ -746,7 +753,7 @@ typedef struct __attribute__((packed,aligned(4))) {
 /**@{*/
 /** CFS module prototype */
 typedef struct __attribute__((packed,aligned(4))) {
-  uint32_t REG[32]; /**< offset 4*0..4*31: CFS register 0..31, user-defined */
+  uint32_t REG[27]; /**< offset 4*0..4*31: CFS register 0..31, user-defined */
 } neorv32_cfs_t;
 
 /** CFS base address */
@@ -756,6 +763,25 @@ typedef struct __attribute__((packed,aligned(4))) {
 #define NEORV32_CFS (*((volatile neorv32_cfs_t*) (NEORV32_CFS_BASE)))
 /**@}*/
 
+/**********************************************************************//**
+ * @name IO Device: AES Custom Functions (AES)
+ **************************************************************************/
+/**@{*/
+/** AES module prototype */
+typedef struct __attribute__((packed,aligned(4))) {
+  uint32_t CTRL;
+  uint32_t KEY;
+  uint32_t NONCE;
+  uint32_t WDATA;
+  uint32_t RDATA;
+} neorv32_aes_t;
+
+/** AES base address */
+#define NEORV32_AES_BASE (0xFFFFFE6CU)
+
+/** AES module hardware access (#neorv32_aes_t) */
+#define NEORV32_AES (*((volatile neorv32_aes_t*) (NEORV32_AES_BASE)))
+/**@}*/
 
 /**********************************************************************//**
  * @name IO Device: Pulse Width Modulation Controller (PWM)
@@ -1398,6 +1424,8 @@ enum NEORV32_SYSINFO_SOC_enum {
   SYSINFO_SOC_IS_SIM         = 13, /**< SYSINFO_FEATURES (13) (r/-): Set during simulation (not guaranteed) */
   SYSINFO_SOC_OCD            = 14, /**< SYSINFO_FEATURES (14) (r/-): On-chip debugger implemented when 1 (via ON_CHIP_DEBUGGER_EN generic) */
 
+  SYSINFO_SOC_IO_AES         = 15, /**< SYSINFO_FEATURES (15) (r/-): AES Custom Function unit implemented when 1 (via IO_AES_EN generic) */
+
   SYSINFO_SOC_IO_GPIO        = 16, /**< SYSINFO_FEATURES (16) (r/-): General purpose input/output port unit implemented when 1 (via IO_GPIO_EN generic) */
   SYSINFO_SOC_IO_MTIME       = 17, /**< SYSINFO_FEATURES (17) (r/-): Machine system timer implemented when 1 (via IO_MTIME_EN generic) */
   SYSINFO_SOC_IO_UART0       = 18, /**< SYSINFO_FEATURES (18) (r/-): Primary universal asynchronous receiver/transmitter 0 implemented when 1 (via IO_UART0_EN generic) */
@@ -1413,7 +1441,7 @@ enum NEORV32_SYSINFO_SOC_enum {
   SYSINFO_SOC_IO_XIRQ        = 28, /**< SYSINFO_FEATURES (28) (r/-): External interrupt controller implemented when 1 (via XIRQ_NUM_IO generic) */
   SYSINFO_SOC_IO_GPTMR       = 29, /**< SYSINFO_FEATURES (29) (r/-): General purpose timer implemented when 1 (via IO_GPTMR_EN generic) */
   SYSINFO_SOC_IO_XIP         = 30, /**< SYSINFO_FEATURES (30) (r/-): Execute in place module implemented when 1 (via IO_XIP_EN generic) */
-  SYSINFO_SOC_IO_ONEWIRE     = 30  /**< SYSINFO_FEATURES (31) (r/-): 1-wire interface controller implemented when 1 (via IO_ONEWIRE_EN generic) */
+  SYSINFO_SOC_IO_ONEWIRE     = 31  /**< SYSINFO_FEATURES (31) (r/-): 1-wire interface controller implemented when 1 (via IO_ONEWIRE_EN generic) */
 };
 
 /** NEORV32_SYSINFO.CACHE (r/-): Cache configuration */
@@ -1456,6 +1484,7 @@ enum NEORV32_SYSINFO_SOC_enum {
 
 // io/peripheral devices
 #include "neorv32_cfs.h"
+#include "neorv32_aes.h"
 #include "neorv32_gpio.h"
 #include "neorv32_gptmr.h"
 #include "neorv32_mtime.h"

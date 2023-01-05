@@ -95,51 +95,37 @@ architecture neorv32_cfs_rtl of neorv32_cfs_aes is
   constant AES_RESET : natural := 0;  -- Reset key & din registers
   constant CTR_START : natural := 1;  -- 1st round of counter mode
   constant AES_START : natural := 2;  -- start AES engine (cleared with AES_END)
-  constant AES_END   : natural := 8;  -- AES engine finished
-
+  constant AES_END   : natural := 3;  -- AES engine finished
+  constant AES_IRQEN : natural := 4;  -- AES engine finished
 
 begin
 
   -- Access Control -------------------------------------------------------------------------
-  -- -------------------------------------------------------------------------------------------
   -- This logic is required to handle the CPU accesses - DO NOT MODIFY!
   acc_en <= '1' when (addr_i(hi_abb_c downto lo_abb_c) = aes_base_c(hi_abb_c downto lo_abb_c)) else '0';
   addr   <= aes_base_c(31 downto lo_abb_c) & addr_i(lo_abb_c-1 downto 2) & "00"; -- word aligned
   wren   <= acc_en and wren_i; -- only full-word write accesses are supported
   rden   <= acc_en and rden_i; -- read accesses always return a full 32-bit word
 
-  -- Interrupt ------------------------------------------------------------------------------
-  -- -------------------------------------------------------------------------------------------
-  -- The CFS features a single interrupt signal, which is connected to the CPU's "fast interrupt" channel 1 (FIRQ1).
-  -- The interrupt is triggered by a one-cycle high-level. After triggering, the interrupt appears as "pending" in the CPU's
-  -- mip CSR ready to trigger execution of the according interrupt handler. It is the task of the application to programmer
-  -- to enable/clear the CFS interrupt using the CPU's mie and mip registers when required.
+  err_o <= '0';  -- This unit doesn't generate bus errors
 
-  irq_o <= '0'; -- not used for this minimal example
+  -- Interrupt generation
+  -- irq line is active for one cycle when AES shows valid output data
+  irq_gen : block is
+    signal aes_dout_valid_d : std_logic;
+  begin
+    process (clk_i, rstn_i) is
+    begin
+      if (not rstn_i) then
+        aes_dout_valid_d <= '0';
+      elsif (rising_edge(clk_i)) then
+        aes_dout_valid_d <= aes_dout_valid;
+      end if;
+    end process;
+    irq_o <= aes_ctrl(AES_IRQEN) and not aes_dout_valid_d and aes_dout_valid;
+  end block;
 
-
-  -- Read/Write Access ----------------------------------------------------------------------
-  -- -------------------------------------------------------------------------------------------
-  -- Here we are reading/writing from/to the interface registers of the module and generate the CPU access handshake (bus response).
-  --
-  -- The CFS provides up to 32 memory-mapped 32-bit interface registers. For instance, these could be used to provide a
-  -- <control register> for global control of the unit, a <data register> for reading/writing from/to a data FIFO, a
-  -- <command register> for issuing commands and a <status register> for status information.
-  --
-  -- Following the interface protocol, each read or write access has to be acknowledged in the following cycle using the ack_o
-  -- signal (or even later if the module needs additional time). If no ACK is generated at all, the bus access will time out
-  -- and cause a bus access fault exception. The current CPU privilege level is available via the 'priv_i' signal (0 = user mode,
-  -- 1 = machine mode), which can be used to constrain access to certain registers or features to privileged software only.
-  --
-  -- This module also provides an optional ERROR signal to indicate a faulty access operation (for example when accessing an
-  -- unused, read-only or "locked" CFS register address). This signal may only be set when the module is actually accessed
-  -- and is set INSTEAD of the ACK signal. Setting the ERR signal will raise a bus access exception with a "Device Error" qualifier
-  -- that can be handled by the application software. Note that the current privilege level should not be exposed to software to
-  -- maintain full virtualization. Hence, CFS-based "privilege escalation" should trigger a bus access exception (e.g. by setting 'err_o').
-
-  err_o <= '0'; -- Tie to zero if not explicitly used.
-
-
+  -- Register write / read access
   host_access: process (rstn_i, clk_i) is
   begin
     if (not rstn_i) then
@@ -151,17 +137,16 @@ begin
       --
       ack_o  <= '0';
       data_o <= (others => '0');
-    elsif rising_edge(clk_i) then -- synchronous interface for read and write accesses
-      -- transfer/access acknowledge --
-      -- default: required for the CPU to check the CFS is answering a bus read OR write request;
-      -- all read and write accesses (to any cfs_reg, even if there is no according physical register implemented) will succeed.
+    elsif rising_edge(clk_i) then
+      -- All accesses to AES function succeed
       ack_o <= rden or wren;
-
       -- write access --
       if (wren) then -- full-word write access, high for one cycle if there is an actual write access
         case addr is
           when aes_ctrl_addr_c => aes_ctrl <= data_i;
+                                  -- Clear all regs when AES_RESET bit set
                                   if (data_i(AES_RESET)) then
+                                    aes_ctrl      <= (others => '0');
                                     aes_key       <= (others => '0');
                                     aes_nonce     <= (others => '0');
                                     aes_din       <= (others => '0');
@@ -176,7 +161,7 @@ begin
                                      write_acc_cnt(1) <= write_acc_cnt(1) + 1;
                                    end if;
                                    aes_nonce(to_integer(write_acc_cnt(1))*32 to to_integer(write_acc_cnt(1))*32+31) <= data_i;
-          when aes_din_addr_c  => write_acc_cnt(1) <= write_acc_cnt(2) + 1;
+          when aes_din_addr_c  => write_acc_cnt(2) <= write_acc_cnt(2) + 1;
                                   aes_din(to_integer(write_acc_cnt(2))*32 to to_integer(write_acc_cnt(2))*32+31) <= data_i;
           when others          => null;
         end case;
@@ -186,7 +171,7 @@ begin
       data_o          <= (others => '0'); -- the output HAS TO BE ZERO if there is no actual read access
       aes_dout_accept <= '0';
       if (rden) then -- the read access is always 32-bit wide, high for one cycle if there is an actual read access
-        case addr is -- make sure to use the internal 'addr' signal for the read/write interface
+        case addr is
           when aes_ctrl_addr_c => data_o <= aes_ctrl;
           when aes_key_addr_c  => read_acc_cnt(0) <= read_acc_cnt(0) + 1;
                                   data_o <= aes_key(to_integer(read_acc_cnt(0))*32 to to_integer(read_acc_cnt(0))*32+31);
@@ -216,7 +201,7 @@ begin
       end if;
 
       -- Reset AES_START & CTR_START when AES engine accepts in data
-      if (aes_din_accept) then
+      if (aes_din_accept and aes_ctrl(AES_START)) then
         aes_ctrl(AES_START) <= '0';
         aes_ctrl(CTR_START) <= '0';
       end if;
@@ -225,6 +210,7 @@ begin
   end process host_access;
 
 
+  -- AES instance
   aes_inst : entity cryptocores.ctraes
   port map (
     reset_i  => rstn_i,

@@ -160,7 +160,7 @@ package neorv32_package is
 
   -- Custom Functions Subsystem (CFS) --
   constant cfs_base_c           : std_ulogic_vector(31 downto 0) := x"fffffe00"; -- base address
-  constant cfs_size_c           : natural := 27*4; -- module's address space in bytes
+  constant cfs_size_c           : natural := 32*4; -- module's address space in bytes
   constant cfs_reg0_addr_c      : std_ulogic_vector(31 downto 0) := x"fffffe00";
   constant cfs_reg1_addr_c      : std_ulogic_vector(31 downto 0) := x"fffffe04";
   constant cfs_reg2_addr_c      : std_ulogic_vector(31 downto 0) := x"fffffe08";
@@ -188,15 +188,6 @@ package neorv32_package is
   constant cfs_reg24_addr_c     : std_ulogic_vector(31 downto 0) := x"fffffe60";
   constant cfs_reg25_addr_c     : std_ulogic_vector(31 downto 0) := x"fffffe64";
   constant cfs_reg26_addr_c     : std_ulogic_vector(31 downto 0) := x"fffffe68";
---
-  constant aes_base_c           : std_ulogic_vector(31 downto 0) := x"fffffe6c"; -- base address
-  constant aes_size_c           : natural := 5*4; -- module's address space in bytes
-  constant aes_ctrl_addr_c      : std_ulogic_vector(31 downto 0) := x"fffffe6c";
-  constant aes_key_addr_c       : std_ulogic_vector(31 downto 0) := x"fffffe70";
-  constant aes_nonce_addr_c     : std_ulogic_vector(31 downto 0) := x"fffffe74";
-  constant aes_din_addr_c       : std_ulogic_vector(31 downto 0) := x"fffffe78";
-  constant aes_dout_addr_c      : std_ulogic_vector(31 downto 0) := x"fffffe7c";
-
 
   -- Pulse-Width Modulation Controller (PWM) --
   constant pwm_base_c           : std_ulogic_vector(31 downto 0) := x"fffffe80"; -- base address
@@ -1065,7 +1056,7 @@ package neorv32_package is
       IO_WDT_EN                    : boolean := false;  -- implement watch dog timer (WDT)?
       IO_TRNG_EN                   : boolean := false;  -- implement true random number generator (TRNG)?
       IO_TRNG_FIFO                 : natural := 1;      -- TRNG fifo depth, has to be a power of two, min 1
-      IO_CFS_EN                    : boolean := false;  -- implement custom functions subsystem (CFS)?
+      IO_CFS_EN                    : boolean := false;  -- implement custom functions subsystem (CFS, AES in this case)?
       IO_CFS_CONFIG                : std_ulogic_vector(31 downto 0) := x"00000000"; -- custom CFS configuration generic
       IO_CFS_IN_SIZE               : positive := 32;    -- size of CFS input conduit in bits
       IO_CFS_OUT_SIZE              : positive := 32;    -- size of CFS output conduit in bits
@@ -1073,8 +1064,7 @@ package neorv32_package is
       IO_NEOLED_TX_FIFO            : natural := 1;      -- NEOLED TX FIFO depth, 1..32k, has to be a power of two
       IO_GPTMR_EN                  : boolean := false;  -- implement general purpose timer (GPTMR)?
       IO_XIP_EN                    : boolean := false;  -- implement execute in place module (XIP)?
-      IO_ONEWIRE_EN                : boolean := false;  -- implement 1-wire interface (ONEWIRE)?
-      IO_AES_EN                    : boolean := false   -- implement AES(128) custom function?
+      IO_ONEWIRE_EN                : boolean := false   -- implement 1-wire interface (ONEWIRE)?
     );
     port (
       -- Global control --
@@ -2217,14 +2207,13 @@ package neorv32_package is
       IO_PWM_NUM_CH        : natural; -- number of PWM channels to implement
       IO_WDT_EN            : boolean; -- implement watch dog timer (WDT)?
       IO_TRNG_EN           : boolean; -- implement true random number generator (TRNG)?
-      IO_CFS_EN            : boolean; -- implement custom functions subsystem (CFS)?
+      IO_CFS_EN            : boolean; -- implement custom functions subsystem (CFS, AES in this case)?
       IO_SLINK_EN          : boolean; -- implement stream link interface?
       IO_NEOLED_EN         : boolean; -- implement NeoPixel-compatible smart LED interface (NEOLED)?
       IO_XIRQ_NUM_CH       : natural; -- number of external interrupt (XIRQ) channels to implement
       IO_GPTMR_EN          : boolean; -- implement general purpose timer (GPTMR)?
       IO_XIP_EN            : boolean; -- implement execute in place module (XIP)?
-      IO_ONEWIRE_EN        : boolean; -- implement 1-wire interface (ONEWIRE)?
-      IO_AES_EN            : boolean  -- implement AES(128) custom function?
+      IO_ONEWIRE_EN        : boolean  -- implement 1-wire interface (ONEWIRE)?
     );
     port (
       -- host access --

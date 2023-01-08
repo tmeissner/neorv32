@@ -131,7 +131,7 @@ entity neorv32_top is
     IO_WDT_EN                    : boolean := false;  -- implement watch dog timer (WDT)?
     IO_TRNG_EN                   : boolean := false;  -- implement true random number generator (TRNG)?
     IO_TRNG_FIFO                 : natural := 1;      -- TRNG fifo depth, has to be a power of two, min 1
-    IO_CFS_EN                    : boolean := false;  -- implement custom functions subsystem (CFS)?
+    IO_CFS_EN                    : boolean := false;  -- implement custom functions subsystem (CFS, AES in this case)
     IO_CFS_CONFIG                : std_ulogic_vector(31 downto 0) := x"00000000"; -- custom CFS configuration generic
     IO_CFS_IN_SIZE               : positive := 32;    -- size of CFS input conduit in bits
     IO_CFS_OUT_SIZE              : positive := 32;    -- size of CFS output conduit in bits
@@ -139,8 +139,7 @@ entity neorv32_top is
     IO_NEOLED_TX_FIFO            : natural := 1;      -- NEOLED TX FIFO depth, 1..32k, has to be a power of two
     IO_GPTMR_EN                  : boolean := false;  -- implement general purpose timer (GPTMR)?
     IO_XIP_EN                    : boolean := false;  -- implement execute in place module (XIP)?
-    IO_ONEWIRE_EN                : boolean := false;  -- implement 1-wire interface (ONEWIRE)?
-    IO_AES_EN                    : boolean := false   -- implement AES(128) custom function?
+    IO_ONEWIRE_EN                : boolean := false  -- implement 1-wire interface (ONEWIRE)?
   );
   port (
     -- Global control --
@@ -358,7 +357,7 @@ architecture neorv32_top_rtl of neorv32_top is
   type resp_bus_id_t is (RESP_BUSKEEPER, RESP_IMEM, RESP_DMEM, RESP_BOOTROM, RESP_WISHBONE, RESP_GPIO,
                          RESP_MTIME, RESP_UART0, RESP_UART1, RESP_SPI, RESP_TWI, RESP_PWM, RESP_WDT,
                          RESP_TRNG, RESP_CFS, RESP_NEOLED, RESP_SYSINFO, RESP_OCD, RESP_SLINK, RESP_XIRQ,
-                         RESP_GPTMR, RESP_XIP_CT, RESP_XIP_ACC, RESP_ONEWIRE, RESP_AES);
+                         RESP_GPTMR, RESP_XIP_CT, RESP_XIP_ACC, RESP_ONEWIRE);
 
   -- module response bus --
   type resp_bus_t is array (resp_bus_id_t) of resp_bus_entry_t;
@@ -375,7 +374,6 @@ architecture neorv32_top_rtl of neorv32_top is
   signal spi_irq       : std_ulogic;
   signal twi_irq       : std_ulogic;
   signal cfs_irq       : std_ulogic;
-  signal aes_irq       : std_ulogic;
   signal neoled_irq    : std_ulogic;
   signal slink_tx_irq  : std_ulogic;
   signal slink_rx_irq  : std_ulogic;
@@ -412,7 +410,6 @@ begin
   cond_sel_string_f(IO_WDT_EN, "WDT ", "") &
   cond_sel_string_f(IO_TRNG_EN, "TRNG ", "") &
   cond_sel_string_f(IO_CFS_EN, "CFS ", "") &
-  cond_sel_string_f(IO_AES_EN, "AES ", "") &
   cond_sel_string_f(io_slink_en_c, "SLINK ", "") &
   cond_sel_string_f(IO_NEOLED_EN, "NEOLED ", "") &
   cond_sel_string_f(boolean(XIRQ_NUM_CH > 0), "XIRQ ", "") &
@@ -630,7 +627,7 @@ begin
 
   -- fast interrupt requests (FIRQs) - triggers are SINGLE-SHOT --
   fast_irq(00) <= wdt_irq;       -- HIGHEST PRIORITY - watchdog
-  fast_irq(01) <= cfs_irq;       -- custom functions subsystem
+  fast_irq(01) <= cfs_irq;       -- custom functions subsystem (AES in this case)
   fast_irq(02) <= uart0_rxd_irq; -- primary UART (UART0) RX
   fast_irq(03) <= uart0_txd_irq; -- primary UART (UART0) TX
   fast_irq(04) <= uart1_rxd_irq; -- secondary UART (UART1) RX
@@ -644,7 +641,7 @@ begin
   fast_irq(12) <= gptmr_irq;     -- general purpose timer
   fast_irq(13) <= onewire_irq;   -- ONEWIRE operation done
   --
-  fast_irq(14) <= aes_irq;       -- reserved
+  fast_irq(14) <= '0';           -- reserved
   fast_irq(15) <= '0';           -- LOWEST PRIORITY - reserved
 
 
@@ -1021,52 +1018,10 @@ begin
 
 
   -- Custom Functions Subsystem (CFS) -------------------------------------------------------
+  -- AES in this case
   -- -------------------------------------------------------------------------------------------
   neorv32_cfs_inst_true:
   if (IO_CFS_EN = true) generate
-    neorv32_cfs_inst: neorv32_cfs
-    generic map (
-      CFS_CONFIG   => IO_CFS_CONFIG,  -- custom CFS configuration generic
-      CFS_IN_SIZE  => IO_CFS_IN_SIZE, -- size of CFS input conduit in bits
-      CFS_OUT_SIZE => IO_CFS_OUT_SIZE -- size of CFS output conduit in bits
-    )
-    port map (
-      -- host access --
-      clk_i       => clk_i,                    -- global clock line
-      rstn_i      => rstn_int,                 -- global reset line, low-active, use as async
-      priv_i      => p_bus.priv,               -- current CPU privilege mode
-      addr_i      => p_bus.addr,               -- address
-      rden_i      => io_rden,                  -- read enable
-      wren_i      => io_wren,                  -- word write enable
-      data_i      => p_bus.wdata,              -- data in
-      data_o      => resp_bus(RESP_CFS).rdata, -- data out
-      ack_o       => resp_bus(RESP_CFS).ack,   -- transfer acknowledge
-      err_o       => resp_bus(RESP_CFS).err,   -- access error
-      -- clock generator --
-      clkgen_en_o => cfs_cg_en,                -- enable clock generator
-      clkgen_i    => clk_gen,                  -- "clock" inputs
-      -- interrupt --
-      irq_o       => cfs_irq,                  -- interrupt request
-      -- custom io (conduit) --
-      cfs_in_i    => cfs_in_i,                 -- custom inputs
-      cfs_out_o   => cfs_out_o                 -- custom outputs
-    );
-  end generate;
-
-  neorv32_cfs_inst_false:
-  if (IO_CFS_EN = false) generate
-    resp_bus(RESP_CFS) <= resp_bus_entry_terminate_c;
-    --
-    cfs_cg_en <= '0';
-    cfs_irq   <= '0';
-    cfs_out_o <= (others => '0');
-  end generate;
-
-
-  -- AES128 Custom Function (AES) -------------------------------------------------------
-  -- -------------------------------------------------------------------------------------------
-  neorv32_cfs_aes_inst_true:
-  if (IO_AES_EN = true) generate
     neorv32_cfs_aes_inst: neorv32_cfs_aes
     generic map (
       AES_CONFIG => 32x"0"  -- custom AES configuration generic
@@ -1080,16 +1035,18 @@ begin
       rden_i      => io_rden,                  -- read enable
       wren_i      => io_wren,                  -- word write enable
       data_i      => p_bus.wdata,              -- data in
-      data_o      => resp_bus(RESP_AES).rdata, -- data out
-      ack_o       => resp_bus(RESP_AES).ack,   -- transfer acknowledge
-      err_o       => resp_bus(RESP_AES).err,   -- access error
+      data_o      => resp_bus(RESP_CFS).rdata, -- data out
+      ack_o       => resp_bus(RESP_CFS).ack,   -- transfer acknowledge
+      err_o       => resp_bus(RESP_CFS).err,   -- access error
       -- interrupt --
-      irq_o       => aes_irq                   -- interrupt request
+      irq_o       => cfs_irq                   -- interrupt request
     );
   else generate
-    resp_bus(RESP_AES) <= resp_bus_entry_terminate_c;
+    resp_bus(RESP_CFS) <= resp_bus_entry_terminate_c;
     --
-    aes_irq <= '0';
+    cfs_cg_en <= '0';
+    cfs_irq   <= '0';
+    cfs_out_o <= (others => '0');
   end generate;
 
 
@@ -1699,14 +1656,13 @@ begin
     IO_PWM_NUM_CH        => IO_PWM_NUM_CH,        -- number of PWM channels to implement
     IO_WDT_EN            => IO_WDT_EN,            -- implement watch dog timer (WDT)?
     IO_TRNG_EN           => IO_TRNG_EN,           -- implement true random number generator (TRNG)?
-    IO_CFS_EN            => IO_CFS_EN,            -- implement custom functions subsystem (CFS)?
+    IO_CFS_EN            => IO_CFS_EN,            -- implement custom functions subsystem (CFS, AES in this case)?
     IO_SLINK_EN          => io_slink_en_c,        -- implement stream link interface?
     IO_NEOLED_EN         => IO_NEOLED_EN,         -- implement NeoPixel-compatible smart LED interface (NEOLED)?
     IO_XIRQ_NUM_CH       => XIRQ_NUM_CH,          -- number of external interrupt (XIRQ) channels to implement
     IO_GPTMR_EN          => IO_GPTMR_EN,          -- implement general purpose timer (GPTMR)?
     IO_XIP_EN            => IO_XIP_EN,            -- implement execute in place module (XIP)?
-    IO_ONEWIRE_EN        => IO_ONEWIRE_EN,        -- implement 1-wire interface (ONEWIRE)?
-    IO_AES_EN            => IO_AES_EN             -- implement AES(128) custom function?
+    IO_ONEWIRE_EN        => IO_ONEWIRE_EN         -- implement 1-wire interface (ONEWIRE)?
   )
   port map (
     -- host access --

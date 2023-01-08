@@ -76,14 +76,13 @@ entity neorv32_sysinfo is
     IO_PWM_NUM_CH        : natural; -- number of PWM channels to implement
     IO_WDT_EN            : boolean; -- implement watch dog timer (WDT)?
     IO_TRNG_EN           : boolean; -- implement true random number generator (TRNG)?
-    IO_CFS_EN            : boolean; -- implement custom functions subsystem (CFS)?
+    IO_CFS_EN            : boolean; -- implement custom functions subsystem (CFS, AES in this case)?
     IO_SLINK_EN          : boolean; -- implement stream link interface?
     IO_NEOLED_EN         : boolean; -- implement NeoPixel-compatible smart LED interface (NEOLED)?
     IO_XIRQ_NUM_CH       : natural; -- number of external interrupt (XIRQ) channels to implement
     IO_GPTMR_EN          : boolean; -- implement general purpose timer (GPTMR)?
     IO_XIP_EN            : boolean; -- implement execute in place module (XIP)?
-    IO_ONEWIRE_EN        : boolean;  -- implement 1-wire interface (ONEWIRE)?
-    IO_AES_EN            : boolean   -- implement AES(128) custom function?
+    IO_ONEWIRE_EN        : boolean  -- implement 1-wire interface (ONEWIRE)?
   );
   port (
     -- host access --
@@ -145,7 +144,7 @@ begin
   sysinfo_mem(2)(13) <= bool_to_ulogic_f(is_simulation_c);     -- is this a simulation?
   sysinfo_mem(2)(14) <= bool_to_ulogic_f(ON_CHIP_DEBUGGER_EN); -- on-chip debugger implemented?
   --
-  sysinfo_mem(2)(15) <= bool_to_ulogic_f(IO_AES_EN);  -- '0'; -- reserved
+  sysinfo_mem(2)(15) <= '0'; -- reserved
   -- IO --
   sysinfo_mem(2)(16) <= bool_to_ulogic_f(IO_GPIO_EN);    -- general purpose input/output port unit (GPIO) implemented?
   sysinfo_mem(2)(17) <= bool_to_ulogic_f(IO_MTIME_EN);   -- machine system timer (MTIME) implemented?
@@ -154,7 +153,7 @@ begin
   sysinfo_mem(2)(20) <= bool_to_ulogic_f(IO_TWI_EN);     -- two-wire interface (TWI) implemented?
   sysinfo_mem(2)(21) <= bool_to_ulogic_f(boolean(IO_PWM_NUM_CH > 0)); -- pulse-width modulation unit (PWM) implemented?
   sysinfo_mem(2)(22) <= bool_to_ulogic_f(IO_WDT_EN);     -- watch dog timer (WDT) implemented?
-  sysinfo_mem(2)(23) <= bool_to_ulogic_f(IO_CFS_EN);     -- custom functions subsystem (CFS) implemented?
+  sysinfo_mem(2)(23) <= bool_to_ulogic_f(IO_CFS_EN);     -- custom functions subsystem (CFS, AES in this case) implemented?
   sysinfo_mem(2)(24) <= bool_to_ulogic_f(IO_TRNG_EN);    -- true random number generator (TRNG) implemented?
   sysinfo_mem(2)(25) <= bool_to_ulogic_f(IO_SLINK_EN);   -- stream links (SLINK) implemented?
   sysinfo_mem(2)(26) <= bool_to_ulogic_f(IO_UART1_EN);   -- secondary universal asynchronous receiver/transmitter (UART1) implemented?

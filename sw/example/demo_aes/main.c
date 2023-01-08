@@ -65,10 +65,10 @@ int main() {
 
   neorv32_rte_setup();
   // install AES interrupt handler
-  neorv32_rte_handler_install(AES_RTE_ID, aes_firq_handler);
+  neorv32_rte_handler_install(CFS_RTE_ID, aes_firq_handler);
 
   // enable interrupt
-  neorv32_cpu_irq_enable(AES_FIRQ_ENABLE); // enable GPTMR FIRQ channel
+  neorv32_cpu_irq_enable(CFS_FIRQ_ENABLE); // enable GPTMR FIRQ channel
   neorv32_cpu_eint(); // enable global interrupt flag
 
   neorv32_aes_setup(key, nonce, 1);
@@ -92,7 +92,7 @@ int main() {
 // Interrupt service routine
 void aes_firq_handler(void) {
 
-  neorv32_cpu_csr_write(CSR_MIP, ~(1<<AES_FIRQ_PENDING));
+  neorv32_cpu_csr_write(CSR_MIP, ~(1<<CFS_FIRQ_PENDING));
   aes_irq = 1;
 
 }

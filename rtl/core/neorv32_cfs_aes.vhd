@@ -65,6 +65,15 @@ end neorv32_cfs_aes;
 
 architecture neorv32_cfs_rtl of neorv32_cfs_aes is
 
+  -- some convenient aliases
+  alias aes_base_c       is cfs_base_c;
+  alias aes_size_c       is cfs_size_c;
+  alias aes_ctrl_addr_c  is cfs_reg0_addr_c;
+  alias aes_key_addr_c   is cfs_reg1_addr_c;
+  alias aes_nonce_addr_c is cfs_reg2_addr_c;
+  alias aes_din_addr_c   is cfs_reg3_addr_c;
+  alias aes_dout_addr_c  is cfs_reg4_addr_c;
+
   -- IO space: module base address --
   -- WARNING: Do not modify the CFS base address or the CFS' occupied address
   -- space as this might cause access collisions with other processor modules.
@@ -92,11 +101,11 @@ architecture neorv32_cfs_rtl of neorv32_cfs_aes is
   signal read_acc_cnt  : reg_acc_cnt_t(0 to 3);
   signal write_acc_cnt : reg_acc_cnt_t(0 to 2);
 
-  constant AES_RESET : natural := 0;  -- Reset key & din registers
-  constant CTR_START : natural := 1;  -- 1st round of counter mode
-  constant AES_START : natural := 2;  -- start AES engine (cleared with AES_END)
+  constant AES_RESET : natural := 0;  -- Reset registers
+  constant CTR_START : natural := 1;  -- 1st round of counter mode (cleared when AES processing begins)
+  constant AES_START : natural := 2;  -- start AES engine (cleared when AES processing begins)
   constant AES_END   : natural := 3;  -- AES engine finished
-  constant AES_IRQEN : natural := 4;  -- AES engine finished
+  constant AES_IRQEN : natural := 4;  -- Irq enable
 
 begin
 
@@ -134,7 +143,7 @@ begin
       write_acc_cnt <= (others => "00");
       -- aes
       aes_dout_accept <= '0';
-      --
+      -- cpu bus
       ack_o  <= '0';
       data_o <= (others => '0');
     elsif rising_edge(clk_i) then
